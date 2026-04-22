@@ -1,70 +1,56 @@
-# --- SIMPAN CODE LOGIC KAMU DI ATAS (apply_blend & add_watermark) ---
+import streamlit as st
+import yt_dlp
+import os
+import glob
 
-# --- STREAMLIT UI CUSTOM DESIGN ---
-st.set_page_config(page_title="Watermark App", layout="wide")
+st.set_page_config(page_title="YT Downloader", page_icon="🎬")
 
-# CSS untuk membuat Floating UI di sebelah kanan
 st.markdown("""
     <style>
-    .main { background-color: #f5f7f9; }
-    [data-testid="stSidebar"] { display: none; } /* Sembunyikan sidebar bawaan */
-    
-    /* Container untuk Floating Panel */
-    .floating-panel {
-        position: fixed;
-        top: 80px;
-        right: 40px;
-        width: 350px;
-        background: white;
-        padding: 25px;
-        border-radius: 15px;
-        box-shadow: 0 10px 25px rgba(0,0,0,0.1);
-        z-index: 1000;
-        border: 1px solid #eee;
-    }
+    .main { background-color: #0e1117; color: white; }
+    .stTextInput > div > div > input { background-color: #262730; color: white; border: 1px solid #444; }
     </style>
     """, unsafe_allow_html=True)
 
-st.title("📸 Watermark App")
+st.title("🎬 YT to MP4 Downloader")
+st.write("Paste the link and wait for the magic.")
 
-# Layout utama: Gambar di kiri, Controls di kanan
-col_img, col_ctrl = st.columns([0.7, 0.3])
+url = st.text_input("Enter YouTube URL:", placeholder="https://www.youtube.com/watch?v=...")
 
-with col_ctrl:
-    st.markdown('<div class="floating-panel">', unsafe_allow_html=True)
-    st.subheader("Controls")
-    
-    mode = st.radio("Type", ["Text", "Image"], horizontal=True)
-    
-    if mode == "Text":
-        content = st.text_input("Text", "Mike Briggs")
-    else:
-        content = st.file_uploader("Logo", type=['png', 'jpg', 'jpeg'])
-    
-    st.divider()
-    
-    blend_mode = st.selectbox("Blend Mode", ["Normal", "Multiply", "Screen", "Overlay", "Difference"])
-    size = st.slider("Size", 10, 1000, 200)
-    opacity = st.slider("Opacity", 0.0, 1.0, 0.5)
-    angle = st.slider("Rotation", 0, 360, 45)
-    
-    st.markdown('</div>', unsafe_allow_html=True)
+if url:
+    if st.button("Start Download & Convert"):
+        try:
+            with st.spinner("Downloading and processing... this may take a minute."):
+                # Setup options
+                ydl_opts = {
+                    'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
+                    'merge_output_format': 'mp4',
+                    'outtmpl': 'downloaded_video.%(ext)s', # Fix name to make it easy to find
+                }
 
-with col_img:
-    uploaded_file = st.file_uploader("Upload Main Photo", type=['jpg', 'jpeg', 'png'], label_visibility="collapsed")
-    
-    if uploaded_file:
-        img = Image.open(uploaded_file)
-        # Jalankan fungsi add_watermark kamu
-        result = add_watermark(img, mode, content, opacity, angle, size, blend_mode)
-        
-        # Display Result
-        st.image(result, use_container_width=True)
-        
-        # Download Button di bawah gambar
-        buf = io.BytesIO()
-        result.save(buf, format="JPEG", quality=95)
-        st.download_button("💾 WATERMARK IMAGES", buf.getvalue(), "watermarked.jpg", "image/jpeg", use_container_width=True)
-    else:
-        # Placeholder jika belum ada gambar
-        st.info("Please upload an image to start")
+                # Clear previous downloads
+                if os.path.exists("downloaded_video.mp4"):
+                    os.remove("downloaded_video.mp4")
+
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    ydl.download([url])
+
+                # Check if file exists
+                if os.path.exists("downloaded_video.mp4"):
+                    with open("downloaded_video.mp4", "rb") as file:
+                        st.success("Conversion Finished!")
+                        st.download_button(
+                            label="💾 DOWNLOAD MP4",
+                            data=file,
+                            file_name="video_result.mp4",
+                            mime="video/mp4",
+                            use_container_width=True
+                        )
+                else:
+                    st.error("File was not found after processing.")
+
+        except Exception as e:
+            st.error(f"Error: {str(e)}")
+
+st.divider()
+st.caption("Note: High-resolution videos (4K) might take longer to process on Streamlit Cloud.")
