@@ -1,76 +1,106 @@
 import streamlit as st
-import pandas as pd
-from datetime import datetime
-import plotly.graph_objects as go
-from streamlit_calendar import calendar
 
-# --- TEMA NOTION ---
-st.set_page_config(page_title="— journal", layout="wide", page_icon="📓")
+# --- CONFIG ---
+st.set_page_config(page_title="Candlestick Generator", layout="wide", page_icon="📈")
 
+# Style ala Notion/Dark Mode
 st.markdown("""
     <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap');
-    html, body, [class*="css"] { font-family: 'Inter', sans-serif; background-color: #0e1117; }
-    .notion-header { font-size: 45px; font-weight: 700; color: white; letter-spacing: -1px; margin-bottom: 0px; }
-    .notion-quote { border-left: 3px solid #37352f; padding-left: 14px; color: #9b9b9b; font-style: italic; margin-bottom: 30px; }
-    div[data-testid="stDataFrame"] { border: none; }
-    .stButton>button { background-color: #2383e2; color: white; border-radius: 4px; border: none; }
+    .main { background-color: #0e1117; }
+    .stButton>button { width: 100%; border-radius: 4px; }
     </style>
     """, unsafe_allow_html=True)
 
-st.markdown('<div class="notion-header">— journal</div>', unsafe_allow_html=True)
-st.markdown('<div class="notion-quote">"Trading is the hardest way to make easy money"</div>', unsafe_allow_html=True)
+st.title("📈 Candlestick SVG Generator")
+st.caption("Buat ilustrasi candlestick custom untuk edukasi atau desain.")
 
-# --- LOGIKA DATABASE ---
-if 'trades' not in st.session_state:
-    st.session_state.trades = pd.DataFrame(columns=[
-        'ENTRY', 'Date', 'Pair', 'Key Level', 'Result', 'PNL', 'RR', 'Direction', 'Setup'
-    ])
+# --- SESSION STATE ---
+if 'candles' not in st.session_state:
+    st.session_state.candles = []
 
-# --- NAVIGASI TAB ---
-tab1, tab2, tab3 = st.tabs(["📊 Trade", "📅 Trading Calendar", "📈 Chart"])
-
-with tab1:
-    with st.expander("+ New Trade Entry"):
-        c1, c2, c3, c4 = st.columns(4)
-        with c1:
-            tr_date = st.date_input("Date", datetime.now())
-            pair = st.selectbox("Pair", ["MNQ1!", "NAS100", "XAUUSD", "BTCUSD"])
-        with c2:
-            direction = st.selectbox("Direction", ["BUY", "SELL"])
-            setup = st.text_input("Setup", "A+")
-        with c3:
-            pnl = st.number_input("PNL ($)", value=0.0)
-            rr = st.number_input("RR", value=0.0)
-        with c4:
-            result = st.selectbox("Result", ["WIN", "LOSS", "FLAT"])
-            key_level = st.text_input("Key Level", "Fair Value Gap")
+# --- SIDEBAR: INPUT CONTROL ---
+with st.sidebar:
+    st.header("🛠️ Candle Settings")
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("➕ Bullish", help="Add Green Candle"):
+            st.session_state.candles.append({'type': 'bull', 'body': 40, 'top_wick': 10, 'bot_wick': 10})
+    with col2:
+        if st.button("➕ Bearish", help="Add Red Candle"):
+            st.session_state.candles.append({'type': 'bear', 'body': 40, 'top_wick': 10, 'bot_wick': 10})
             
-        if st.button("Add to Journal"):
-            new_trade = {
-                'ENTRY': '📄', 'Date': tr_date.strftime("%b %d"), 'Pair': pair,
-                'Key Level': key_level, 'Result': result, 'PNL': pnl,
-                'RR': rr, 'Direction': direction, 'Setup': setup
-            }
-            st.session_state.trades = pd.concat([st.session_state.trades, pd.DataFrame([new_trade])], ignore_index=True)
-            st.rerun()
+    if st.button("🗑️ Clear All", type="secondary"):
+        st.session_state.candles = []
+        st.rerun()
 
-    st.dataframe(st.session_state.trades, use_container_width=True, hide_index=True)
+    st.divider()
+    
+    # Edit Last Candle
+    if st.session_state.candles:
+        st.subheader("Adjust Last Candle")
+        idx = len(st.session_state.candles) - 1
+        st.session_state.candles[idx]['body'] = st.slider("Body Height", 5, 200, st.session_state.candles[idx]['body'])
+        st.session_state.candles[idx]['top_wick'] = st.slider("Top Wick", 0, 100, st.session_state.candles[idx]['top_wick'])
+        st.session_state.candles[idx]['bot_wick'] = st.slider("Bottom Wick", 0, 100, st.session_state.candles[idx]['bot_wick'])
 
-with tab2:
-    events = []
-    for _, row in st.session_state.trades.iterrows():
-        color = "#2ecc71" if row['PNL'] > 0 else "#e74c3c" if row['PNL'] < 0 else "#808080"
-        events.append({
-            "title": f"{row['Pair']} (${row['PNL']})",
-            "start": datetime.now().strftime("%Y-%m-%d"),
-            "backgroundColor": color
-        })
-    calendar(events=events, options={"initialView": "dayGridMonth"})
+# --- RENDER LOGIC (SVG) ---
+def generate_svg(candles):
+    width = len(candles) * 60 + 40
+    height = 400
+    base_y = height / 2
+    
+    svg_header = f'<svg width="{width}" height="{height}" viewBox="0 0 {width} {height}" xmlns="http://www.w3.org/2000/svg" style="background:#1a1c23; border-radius:8px;">'
+    svg_body = ""
+    
+    current_x = 30
+    prev_close_y = base_y
+    
+    for c in candles:
+        # Tentukan posisi Y berdasarkan tipe candle (otomatis menyambung OHLC sederhana)
+        color = "#2ecc71" if c['type'] == 'bull' else "#e74c3c"
+        
+        if c['type'] == 'bull':
+            open_y = prev_close_y
+            close_y = open_y - c['body']
+            high_y = close_y - c['top_wick']
+            low_y = open_y + c['bot_wick']
+            prev_close_y = close_y # Close candle ini jadi Open candle depan
+        else:
+            open_y = prev_close_y
+            close_y = open_y + c['body']
+            high_y = open_y - c['top_wick']
+            low_y = close_y + c['bot_wick']
+            prev_close_y = close_y
 
-with tab3:
-    if not st.session_state.trades.empty:
-        equity = st.session_state.trades['PNL'].cumsum()
-        fig = go.Figure(go.Scatter(y=equity, mode='lines+markers', line=dict(color='#2383e2')))
-        fig.update_layout(template="plotly_dark", title="Equity Curve")
-        st.plotly_chart(fig, use_container_width=True)
+        # Wick (Sumbu)
+        svg_body += f'<line x1="{current_x + 15}" y1="{high_y}" x2="{current_x + 15}" y2="{low_y}" stroke="{color}" stroke-width="2" />'
+        # Body
+        y_rect = min(open_y, close_y)
+        h_rect = abs(open_y - close_y)
+        svg_body += f'<rect x="{current_x}" y="{y_rect}" width="30" height="{h_rect}" fill="{color}" rx="2" />'
+        
+        current_x += 50 # Jarak antar candle
+
+    return svg_header + svg_body + "</svg>"
+
+# --- DISPLAY ---
+if st.session_state.candles:
+    svg_code = generate_svg(st.session_state.candles)
+    
+    # Preview
+    st.write("### Preview")
+    st.components.v1.html(svg_code, height=450)
+    
+    # Export
+    st.download_button(
+        label="📥 Export as SVG",
+        data=svg_code,
+        file_name="candlestick_design.svg",
+        mime="image/svg+xml"
+    )
+else:
+    st.info("Klik tombol di sidebar untuk mulai membuat candlestick.")
+
+st.divider()
+st.caption("Tips: Gunakan slider di sidebar untuk mengatur tinggi body dan wick candle terakhir yang kamu buat.")
